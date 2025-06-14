@@ -1,0 +1,42 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Globals:
+  Function:
+    Runtime: nodejs18.x
+    Timeout: 30
+    MemorySize: 256
+
+Resources:
+  WorkoutPlannerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: dist/functions/workoutPlanner/
+      Handler: index.handler
+      Events:
+        WorkoutPlannerApi:
+          Type: HttpApi
+          Properties:
+            Path: /workout
+            Method: post
+      Environment:
+        Variables:
+          OPENAI_API_KEY: !Ref OpenAIApiKey
+
+  HelloWorldFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: dist/functions/helloWorld/
+      Handler: index.handler
+      Events:
+        HelloWorldApi:
+          Type: HttpApi
+          Properties:
+            Path: /hello
+            Method: get
+
+Parameters:
+  OpenAIApiKey:
+    Type: String
+    Description: OpenAI API Key
+    NoEcho: true 
