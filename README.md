@@ -29,6 +29,27 @@ cp terraform/terraform.tfvars.example terraform/terraform.tfvars
 - `google_client_id`: Your Google Client ID
 - `google_client_secret`: Your Google Client Secret
 
+## Terraform State Management
+
+The project uses S3 and DynamoDB for Terraform state management:
+
+1. S3 bucket (`repsyai-terraform-state`):
+   - Stores the Terraform state file
+   - Enabled versioning for state history
+   - Server-side encryption enabled
+   - Prevents accidental deletion
+
+2. DynamoDB table (`repsyai-terraform-locks`):
+   - Provides state locking
+   - Prevents concurrent modifications
+   - Uses pay-per-request billing
+
+To initialize Terraform with the S3 backend:
+```bash
+cd terraform
+terraform init
+```
+
 ## Social Login Setup
 
 ### Google Login
@@ -71,6 +92,8 @@ curl -X POST https://<api-endpoint>/workout \
 - SSL/TLS is required for all communications
 - Cognito User Pool enforces strong password policies
 - API Gateway has CORS configured for secure cross-origin requests
+- Terraform state is encrypted and versioned in S3
+- State locking prevents concurrent modifications
 
 ## Local Development
 
