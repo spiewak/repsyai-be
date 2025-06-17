@@ -2,13 +2,13 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 4.0"
+      version = "~> 5.0"
     }
   }
 }
 
 provider "aws" {
-  region = "eu-west-1"  # Change this to your preferred region
+  region = var.aws_region
 }
 
 # VPC Configuration
@@ -125,7 +125,7 @@ resource "aws_cloudwatch_log_group" "hello_world" {
 
 # Workout Planner Lambda function
 resource "aws_lambda_function" "workout_planner" {
-  filename         = "../dist/functions/workoutPlanner/index.zip"
+  filename         = "../dist/functions/workoutPlanner.zip"
   function_name    = "workout-planner"
   role            = aws_iam_role.lambda_role.arn
   handler         = "index.handler"
@@ -153,7 +153,7 @@ resource "aws_lambda_function" "workout_planner" {
 
 # Hello World Lambda function
 resource "aws_lambda_function" "hello_world" {
-  filename         = "../dist/functions/helloWorld/index.zip"
+  filename         = "../dist/functions/helloWorld.zip"
   function_name    = "hello-world"
   role            = aws_iam_role.lambda_role.arn
   handler         = "index.handler"
@@ -173,115 +173,204 @@ resource "aws_lambda_function" "hello_world" {
   ]
 }
 
-# API Gateway for Workout Planner
-resource "aws_apigatewayv2_api" "workout_planner_api" {
-  name          = "workout-planner-api"
-  protocol_type = "HTTP"
-}
+# Cognito User Pool
+resource "aws_cognito_user_pool" "main" {
+  name = "repsyai-user-pool"
 
-resource "aws_apigatewayv2_stage" "workout_planner_stage" {
-  api_id = aws_apigatewayv2_api.workout_planner_api.id
-  name   = "prod"
-  auto_deploy = true
+  # Password policy
+  password_policy {
+    minimum_length    = 8
+    require_lowercase = true
+    require_numbers   = true
+    require_symbols   = true
+    require_uppercase = true
+  }
 
-  access_log_settings {
-    destination_arn = aws_cloudwatch_log_group.workout_planner_api.arn
-    format = jsonencode({
-      requestId      = "$context.requestId"
-      ip            = "$context.identity.sourceIp"
-      requestTime   = "$context.requestTime"
-      httpMethod    = "$context.httpMethod"
-      routeKey      = "$context.routeKey"
-      status        = "$context.status"
-      protocol      = "$context.protocol"
-      responseTime  = "$context.responseLatency"
-      integrationError = "$context.integrationErrorMessage"
-    })
+  # Email verification
+  auto_verified_attributes = ["email"]
+
+  # Schema attributes
+  schema {
+    name                = "email"
+    attribute_data_type = "String"
+    mutable            = true
+    required           = true
+
+    string_attribute_constraints {
+      min_length = 1
+      max_length = 256
+    }
+  }
+
+  # Admin create user config
+  admin_create_user_config {
+    allow_admin_create_user_only = false
+  }
+
+  # Account recovery setting
+  account_recovery_setting {
+    recovery_mechanism {
+      name     = "verified_email"
+      priority = 1
+    }
+  }
+
+  # Email configuration
+  email_configuration {
+    email_sending_account = "COGNITO_DEFAULT"
+  }
+
+  # MFA configuration
+  mfa_configuration = "OFF"
+
+  # User pool add-ons
+  user_pool_add_ons {
+    advanced_security_mode = "OFF"
+  }
+
+  # Verification message template
+  verification_message_template {
+    default_email_option = "CONFIRM_WITH_CODE"
+    email_subject       = "Your verification code"
+    email_message       = "Your verification code is {####}"
   }
 }
 
-resource "aws_cloudwatch_log_group" "workout_planner_api" {
-  name              = "/aws/apigateway/workout-planner-api"
-  retention_in_days = 14
+# Google Identity Provider
+resource "aws_cognito_identity_provider" "google" {
+  user_pool_id  = aws_cognito_user_pool.main.id
+  provider_name = "Google"
+  provider_type = "Google"
+
+  provider_details = {
+    authorize_scopes = "email profile openid"
+    client_id        = var.google_client_id
+    client_secret    = var.google_client_secret
+  }
+
+  attribute_mapping = {
+    email    = "email"
+    username = "sub"
+  }
 }
 
-resource "aws_apigatewayv2_integration" "workout_planner_integration" {
-  api_id           = aws_apigatewayv2_api.workout_planner_api.id
+# Cognito User Pool Client
+resource "aws_cognito_user_pool_client" "main" {
+  name                         = "repsyai-client"
+  user_pool_id                = aws_cognito_user_pool.main.id
+  generate_secret             = true
+  refresh_token_validity      = 30
+  prevent_user_existence_errors = "ENABLED"
+  explicit_auth_flows = [
+    "ALLOW_USER_SRP_AUTH",
+    "ALLOW_REFRESH_TOKEN_AUTH",
+    "ALLOW_USER_PASSWORD_AUTH"
+  ]
+  callback_urls = ["https://your-domain.com/callback"]
+  logout_urls   = ["https://your-domain.com/logout"]
+  supported_identity_providers = ["Google"]
+}
+
+# API Gateway
+resource "aws_apigatewayv2_api" "main" {
+  name          = "repsyai-api"
+  protocol_type = "HTTP"
+  cors_configuration {
+    allow_origins = ["*"]
+    allow_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    allow_headers = ["Content-Type", "Authorization"]
+    max_age      = 300
+  }
+}
+
+# Cognito Authorizer
+resource "aws_apigatewayv2_authorizer" "cognito" {
+  api_id           = aws_apigatewayv2_api.main.id
+  authorizer_type  = "JWT"
+  identity_sources = ["$request.header.Authorization"]
+  name             = "cognito-authorizer"
+
+  jwt_configuration {
+    audience = [aws_cognito_user_pool_client.main.id]
+    issuer   = "https://cognito-idp.${var.aws_region}.amazonaws.com/${aws_cognito_user_pool.main.id}"
+  }
+}
+
+# API Gateway Integration
+resource "aws_apigatewayv2_integration" "workout_planner" {
+  api_id           = aws_apigatewayv2_api.main.id
   integration_type = "AWS_PROXY"
 
   connection_type    = "INTERNET"
-  description        = "Lambda integration"
+  description        = "Workout Planner Lambda integration"
   integration_method = "POST"
   integration_uri    = aws_lambda_function.workout_planner.invoke_arn
 }
 
-resource "aws_apigatewayv2_route" "workout_planner_route" {
-  api_id    = aws_apigatewayv2_api.workout_planner_api.id
-  route_key = "POST /workout"
-  target    = "integrations/${aws_apigatewayv2_integration.workout_planner_integration.id}"
-}
-
-# API Gateway for Hello World
-resource "aws_apigatewayv2_api" "hello_world_api" {
-  name          = "hello-world-api"
-  protocol_type = "HTTP"
-}
-
-resource "aws_apigatewayv2_stage" "hello_world_stage" {
-  api_id = aws_apigatewayv2_api.hello_world_api.id
-  name   = "prod"
-  auto_deploy = true
-
-  access_log_settings {
-    destination_arn = aws_cloudwatch_log_group.hello_world_api.arn
-    format = jsonencode({
-      requestId      = "$context.requestId"
-      ip            = "$context.identity.sourceIp"
-      requestTime   = "$context.requestTime"
-      httpMethod    = "$context.httpMethod"
-      routeKey      = "$context.routeKey"
-      status        = "$context.status"
-      protocol      = "$context.protocol"
-      responseTime  = "$context.responseLatency"
-      integrationError = "$context.integrationErrorMessage"
-    })
-  }
-}
-
-resource "aws_cloudwatch_log_group" "hello_world_api" {
-  name              = "/aws/apigateway/hello-world-api"
-  retention_in_days = 14
-}
-
-resource "aws_apigatewayv2_integration" "hello_world_integration" {
-  api_id           = aws_apigatewayv2_api.hello_world_api.id
+resource "aws_apigatewayv2_integration" "hello_world" {
+  api_id           = aws_apigatewayv2_api.main.id
   integration_type = "AWS_PROXY"
 
   connection_type    = "INTERNET"
-  description        = "Lambda integration"
+  description        = "Hello World Lambda integration"
   integration_method = "POST"
   integration_uri    = aws_lambda_function.hello_world.invoke_arn
 }
 
-resource "aws_apigatewayv2_route" "hello_world_route" {
-  api_id    = aws_apigatewayv2_api.hello_world_api.id
-  route_key = "GET /hello"
-  target    = "integrations/${aws_apigatewayv2_integration.hello_world_integration.id}"
+# API Gateway Routes with Authorizer
+resource "aws_apigatewayv2_route" "workout_planner" {
+  api_id    = aws_apigatewayv2_api.main.id
+  route_key = "POST /workout"
+  target    = "integrations/${aws_apigatewayv2_integration.workout_planner.id}"
+  authorizer_id = aws_apigatewayv2_authorizer.cognito.id
+  authorization_type = "JWT"
 }
 
-# Lambda permissions for API Gateway
-resource "aws_lambda_permission" "workout_planner_permission" {
+resource "aws_apigatewayv2_route" "hello_world" {
+  api_id    = aws_apigatewayv2_api.main.id
+  route_key = "GET /hello"
+  target    = "integrations/${aws_apigatewayv2_integration.hello_world.id}"
+  authorizer_id = aws_apigatewayv2_authorizer.cognito.id
+  authorization_type = "JWT"
+}
+
+# API Gateway Stage
+resource "aws_apigatewayv2_stage" "main" {
+  api_id = aws_apigatewayv2_api.main.id
+  name   = "prod"
+  auto_deploy = true
+}
+
+# Lambda permissions
+resource "aws_lambda_permission" "workout_planner" {
   statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.workout_planner.function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigatewayv2_api.workout_planner_api.execution_arn}/*/*"
+  source_arn    = "${aws_apigatewayv2_api.main.execution_arn}/*/*"
 }
 
-resource "aws_lambda_permission" "hello_world_permission" {
+resource "aws_lambda_permission" "hello_world" {
   statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.hello_world.function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigatewayv2_api.hello_world_api.execution_arn}/*/*"
+  source_arn    = "${aws_apigatewayv2_api.main.execution_arn}/*/*"
+}
+
+# Outputs
+output "api_endpoint" {
+  value = "${aws_apigatewayv2_stage.main.invoke_url}"
+}
+
+output "user_pool_id" {
+  value = aws_cognito_user_pool.main.id
+}
+
+output "user_pool_client_id" {
+  value = aws_cognito_user_pool_client.main.id
+}
+
+output "user_pool_domain" {
+  value = "${aws_cognito_user_pool.main.domain}.auth.${var.aws_region}.amazoncognito.com"
 } 

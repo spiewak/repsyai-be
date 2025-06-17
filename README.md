@@ -1,16 +1,15 @@
-# Workout Planner API
+# RepsyAI Backend
 
-This project contains two AWS Lambda functions:
-1. Workout Planner - Uses ChatGPT to generate workout plans based on user preferences
-2. Hello World - A simple Lambda function that returns "Hello World"
+This project contains AWS Lambda functions for workout planning using ChatGPT.
 
 ## Prerequisites
 
-- Node.js 18.x or later
+- Node.js 18.x
 - AWS CLI configured with appropriate credentials
-- AWS SAM CLI installed
 - Terraform installed
 - OpenAI API key
+- Google Cloud Platform Account (for social login)
+- SSL Certificate in AWS Certificate Manager
 
 ## Setup
 
@@ -19,102 +18,100 @@ This project contains two AWS Lambda functions:
 npm install
 ```
 
-2. Build the TypeScript code:
+2. Create a `terraform.tfvars` file in the `terraform` directory with your configuration:
 ```bash
-npm run build
+cp terraform/terraform.tfvars.example terraform/terraform.tfvars
 ```
 
-3. Create deployment packages:
-```bash
-cd dist/functions/workoutPlanner
-zip -r index.zip .
-cd ../helloWorld
-zip -r index.zip .
+3. Edit `terraform.tfvars` and fill in your values:
+- `aws_region`: Your AWS region
+- `openai_api_key`: Your OpenAI API key
+- `google_client_id`: Your Google Client ID
+- `google_client_secret`: Your Google Client Secret
+
+## Social Login Setup
+
+### Google Login
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select an existing one
+3. Enable Google+ API
+4. Configure OAuth consent screen
+5. Create OAuth 2.0 credentials:
+   - Add authorized redirect URIs (e.g., `https://your-domain.com/callback`)
+6. Copy Client ID and Client Secret to `terraform.tfvars`
+
+## Authentication
+
+The API is secured with Amazon Cognito. To make authenticated requests:
+
+1. Use the Cognito Hosted UI to sign in:
 ```
+https://<cognito-domain>/login?client_id=<client-id>&response_type=code&scope=email+openid+profile&redirect_uri=<your-callback-url>
+```
+
+2. After successful authentication, you'll receive an ID token and access token.
+
+3. Include the access token in your API requests:
+```bash
+curl -X POST https://<api-endpoint>/workout \
+  -H "Authorization: Bearer <access-token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "training_goal": "weight_loss",
+    "time_range": "3_months",
+    "body_parts": ["chest", "back", "legs"]
+  }'
+```
+
+## Security
+
+- All endpoints require authentication via Cognito
+- API Gateway uses JWT authorizer to validate tokens
+- Social login provider (Google) is configured with secure OAuth flow
+- SSL/TLS is required for all communications
+- Cognito User Pool enforces strong password policies
+- API Gateway has CORS configured for secure cross-origin requests
 
 ## Local Development
 
-1. Set your OpenAI API key as an environment variable:
-```bash
-export OPENAI_API_KEY=your-api-key-here
-```
-
-2. Start the local API:
+1. Start the local API:
 ```bash
 npm run start:local
 ```
 
-The API will be available at `http://localhost:3000` with the following endpoints:
-- POST http://localhost:3000/workout
-- GET http://localhost:3000/hello
-
-## Testing
-
-Run the test suite:
-```bash
-npm test
-```
-
-Run tests in watch mode (useful during development):
-```bash
-npm run test:watch
-```
-
-## Deployment
-
-### Local Deployment with SAM
-
-1. Deploy locally with SAM:
+2. Deploy locally with OpenAI API key:
 ```bash
 npm run deploy:local
 ```
 
-### AWS Deployment with Terraform
+## Testing
 
-1. Navigate to the Terraform directory:
+Run tests:
 ```bash
-cd terraform
+npm test
 ```
 
-2. Initialize Terraform:
+Run tests in watch mode:
 ```bash
-terraform init
-```
-
-3. Create a `terraform.tfvars` file with your OpenAI API key:
-```hcl
-openai_api_key = "your-api-key-here"
-```
-
-4. Deploy the infrastructure:
-```bash
-terraform apply
+npm run test:watch
 ```
 
 ## API Endpoints
 
-After deployment, you'll get two API endpoints:
+### POST /workout
+Generate a workout plan based on user input.
 
-1. Workout Planner API:
-   - Method: POST
-   - Endpoint: `{api-gateway-url}/workout`
-   - Request body example:
-   ```json
-   {
-     "trainingGoal": "Strength",
-     "time": 60,
-     "bodyParts": {
-       "Chest": true,
-       "Legs": false,
-       "Back": true,
-       "Abs": true
-     }
-   }
-   ```
+Request body:
+```json
+{
+  "training_goal": "weight_loss",
+  "time_range": "3_months",
+  "body_parts": ["chest", "back", "legs"]
+}
+```
 
-2. Hello World API:
-   - Method: GET
-   - Endpoint: `{api-gateway-url}/hello`
+### GET /hello
+Simple health check endpoint.
 
 ## Infrastructure Components
 

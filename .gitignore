@@ -17,6 +17,7 @@ samconfig.toml
 *.tfstate
 *.tfstate.*
 *.tfvars
+*.tfvars.example
 !example.tfvars
 .terraformrc
 terraform.rc

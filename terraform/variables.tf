@@ -1,11 +1,23 @@
+variable "aws_region" {
+  description = "AWS region"
+  type        = string
+  default     = "eu-west-1"
+}
+
 variable "openai_api_key" {
-  description = "OpenAI API key for the workout planner Lambda function"
+  description = "OpenAI API Key"
   type        = string
   sensitive   = true
 }
 
-variable "aws_region" {
-  description = "AWS region to deploy resources"
+variable "google_client_id" {
+  description = "Google Client ID for social login"
   type        = string
-  default     = "eu-west-1"
-} 
+  sensitive   = true
+}
+
+variable "google_client_secret" {
+  description = "Google Client Secret for social login"
+  type        = string
+  sensitive   = true
+}
