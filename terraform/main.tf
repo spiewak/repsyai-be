@@ -236,6 +236,12 @@ resource "aws_cognito_user_pool" "main" {
   }
 }
 
+# Cognito User Pool Domain
+resource "aws_cognito_user_pool_domain" "main" {
+  domain       = "repsyai-auth"
+  user_pool_id = aws_cognito_user_pool.main.id
+}
+
 # Google Identity Provider
 resource "aws_cognito_identity_provider" "google" {
   user_pool_id  = aws_cognito_user_pool.main.id
@@ -266,9 +272,20 @@ resource "aws_cognito_user_pool_client" "main" {
     "ALLOW_REFRESH_TOKEN_AUTH",
     "ALLOW_USER_PASSWORD_AUTH"
   ]
-  callback_urls = ["https://your-domain.com/callback"]
-  logout_urls   = ["https://your-domain.com/logout"]
+  callback_urls = [
+    "https://your-domain.com/callback",
+    "http://localhost:8080/login/callback"
+  ]
+  logout_urls   = [
+    "https://your-domain.com/logout",
+    "http://localhost:8080/logout"
+  ]
   supported_identity_providers = ["Google"]
+  
+  # OAuth 2.0 configuration
+  allowed_oauth_flows = ["code"]
+  allowed_oauth_flows_user_pool_client = true
+  allowed_oauth_scopes = ["email", "openid", "profile"]
 }
 
 # API Gateway
@@ -372,5 +389,5 @@ output "user_pool_client_id" {
 }
 
 output "user_pool_domain" {
-  value = "${aws_cognito_user_pool.main.domain}.auth.${var.aws_region}.amazoncognito.com"
+  value = "${aws_cognito_user_pool_domain.main.domain}.auth.${var.aws_region}.amazoncognito.com"
 } 
