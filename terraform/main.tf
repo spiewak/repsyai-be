@@ -264,7 +264,7 @@ resource "aws_cognito_identity_provider" "google" {
 resource "aws_cognito_user_pool_client" "main" {
   name                         = "repsyai-client"
   user_pool_id                = aws_cognito_user_pool.main.id
-  generate_secret             = true
+  generate_secret             = false
   refresh_token_validity      = 30
   prevent_user_existence_errors = "ENABLED"
   explicit_auth_flows = [
@@ -285,7 +285,7 @@ resource "aws_cognito_user_pool_client" "main" {
   # OAuth 2.0 configuration
   allowed_oauth_flows = ["code"]
   allowed_oauth_flows_user_pool_client = true
-  allowed_oauth_scopes = ["email", "openid", "profile"]
+  allowed_oauth_scopes = ["email", "openid", "profile", "aws.cognito.signin.user.admin"]
 }
 
 # API Gateway
